@@ -1,0 +1,4 @@
+requests==2.34.2
+PySocks==1.7.1
+pystray==0.19.5
+Pillow==13.0.0
