@@ -10,6 +10,16 @@ Windows 桌面额度小工具，显示 Codex 的剩余用量和重置倒计时�
 - 支持自定义主题色、网络代理和开机自启动。
 - 支持隐藏到系统托盘，通过托盘菜单恢复或退出。
 
+## 界面预览
+
+常驻浮窗显示剩余额度和重置倒计时，截图使用示例数据。
+
+![Codex 余量胶囊浮窗](docs/screenshots/capsule.png)
+
+| 悬停详情与重置点 | 主题、代理与开机自启动 |
+| --- | --- |
+| <img src="docs/screenshots/details.png" alt="悬停展开用量详情，查看重置点数量和过期时间" width="360"> | <img src="docs/screenshots/settings.png" alt="设置页支持主题色、网络代理和开机自启动" width="360"> |
+
 ## 使用
 
 从 [Releases](https://github.com/JustLookAtNow/codex-usage/releases/latest) 下载 `CodexUsage.exe` 后直接运行，无需安装 Python。也可以按照下方说明从源码运行或自行打包。
