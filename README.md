@@ -12,7 +12,7 @@ Windows 桌面额度小工具，显示 Codex 的剩余用量和重置倒计时�
 
 ## 使用
 
-运行打包后的 `CodexUsage.exe`，无需安装 Python。也可以按照下方说明从源码运行或自行打包。
+从 [Releases](https://github.com/JustLookAtNow/codex-usage/releases/latest) 下载 `CodexUsage.exe` 后直接运行，无需安装 Python。也可以按照下方说明从源码运行或自行打包。
 
 需要本机存在通过 ChatGPT 账号登录的 Codex 凭据：
 
@@ -114,6 +114,19 @@ Get-Content .cache/packaged-smoke/checks.json
 ```
 
 检查使用示例数据，在指定目录保存结果和截图，完成后自动退出。
+
+## 自动发布
+
+推送 `v*` 版本 tag 后，GitHub Actions 会运行非 GUI 测试、构建 Windows x64 EXE，并创建对应的 Release。例如：
+
+```bash
+git tag -a v0.3.0 -m "Release v0.3.0"
+git push origin v0.3.0
+```
+
+后续发布使用新的版本号。带 `-beta`、`-rc` 等后缀的 tag 会生成预发布版本。Release 包含 `CodexUsage.exe`、`SHA256SUMS.txt` 和自动生成的发布说明。
+
+测试或打包失败时不会发布；附件上传失败后可重跑工作流，继续完成草稿。已公开的同名 Release 不会被重跑覆盖。
 
 ## 接口说明
 

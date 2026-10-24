@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Windows x64
+    runs-on: windows-2025
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install build dependencies
+        run: |
+          python -m venv .venv
+          if ($LASTEXITCODE -ne 0) { throw 'Virtual environment creation failed.' }
+          .venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed.' }
+
+      - name: Run non-GUI tests
+        run: |
+          .venv\Scripts\python.exe -m unittest tests.test_core tests.test_settings tests.test_startup -v
+          if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
+
+      - name: Build executable
+        run: ./build.ps1
+
+      - name: Verify executable and calculate checksum
+        run: |
+          $exe = Get-Item -LiteralPath dist/CodexUsage.exe
+          if ($exe.Length -lt 1MB) { throw 'Executable is unexpectedly small.' }
+          $stream = [System.IO.File]::OpenRead($exe.FullName)
+          try {
+            if ($stream.ReadByte() -ne 0x4d -or $stream.ReadByte() -ne 0x5a) {
+              throw 'Executable has no Windows MZ header.'
+            }
+          } finally {
+            $stream.Dispose()
+          }
+          $hash = (Get-FileHash -LiteralPath $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          [System.IO.File]::WriteAllText(
+            (Join-Path $exe.DirectoryName 'SHA256SUMS.txt'),
+            "$hash  CodexUsage.exe" + [char]10,
+            [System.Text.Encoding]::ASCII
+          )
+
+      - name: Store release files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-x64
+          path: |
+            dist/CodexUsage.exe
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download release files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-x64
+          path: dist
+
+      - name: Publish release with verified attachments
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum --check SHA256SUMS.txt
+
+          version="${RELEASE_TAG%%+*}"
+          prerelease=false
+          if [[ "$version" == *-* ]]; then
+            prerelease=true
+          fi
+
+          metadata=$(mktemp)
+          errors=$(mktemp)
+          trap 'rm -f "$metadata" "$errors"' EXIT
+          encoded_tag=$(jq -rn --arg tag "$RELEASE_TAG" '$tag | @uri')
+          if gh api "repos/$GH_REPO/releases/tags/$encoded_tag" > "$metadata" 2> "$errors"; then
+            if jq -e '.draft == false' "$metadata" > /dev/null; then
+              url=$(jq -r '.html_url' "$metadata")
+              echo "Release already published; existing attachments are unchanged: $url" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          elif grep -q '(HTTP 404)' "$errors"; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --generate-notes \
+              --title "$RELEASE_TAG" --prerelease="$prerelease"
+          else
+            cat "$errors" >&2
+            exit 1
+          fi
+
+          # A draft can resume after a failed upload; published assets are never replaced.
+          gh release upload "$RELEASE_TAG" CodexUsage.exe SHA256SUMS.txt --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease="$prerelease"
+          url=$(gh release view "$RELEASE_TAG" --json url --jq .url)
+          echo "Published $RELEASE_TAG: $url" >> "$GITHUB_STEP_SUMMARY"
