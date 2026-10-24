@@ -65,7 +65,7 @@ class StartupTests(unittest.TestCase):
 
     def test_source_command_uses_pythonw_and_absolute_main_path(self):
         with tempfile.TemporaryDirectory() as directory:
-            folder = Path(directory)
+            folder = Path(directory).resolve()
             (folder / "pythonw.exe").touch()
             entry = folder / "project files" / "main.py"
             command = startup_command(folder / "python.exe", frozen=False, entry=entry)
