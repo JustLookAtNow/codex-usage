@@ -145,13 +145,40 @@ class UiTests(unittest.TestCase):
         self.assertTrue(self.app.closed)
 
     def test_summary_is_only_ordinary_5h_and_weekly(self):
+        full_width = self.app.width
         data = usage_payload()
         data["rate_limit"]["primary_window"] = None
         data["additional_rate_limits"] = [{"limit_name": "Other model", "rate_limit": {
             "primary_window": {"used_percent": 1, "limit_window_seconds": 18000}}}]
         self.app.apply_result(PollResult(Outcome(parse_usage(data)), Outcome(), datetime.now(timezone.utc)))
-        self.assertEqual(self.app.summary_values[0], ("5h", "—", "—"))
-        self.assertEqual(self.app.summary_values[1][0:2], ("Weekly", "38%"))
+        self.root.update()
+        self.assertEqual(len(self.app.summary_values), 1)
+        self.assertEqual(self.app.summary_values[0][0:2], ("Weekly", "38%"))
+        self.assertLess(self.app.width, full_width)
+        self.assertEqual(self.root.winfo_width(), self.app.width)
+        self.assertEqual(sum(self.app.summary.type(item) == "line"
+                             for item in self.app.summary.find_all()), 2)
+        compact_width = self.app.width
+        self.app.apply_result(PollResult(Outcome(error="网络连接超时"), Outcome(), datetime.now(timezone.utc)))
+        self.assertEqual(self.app.width, compact_width)
+        self.assertEqual(len(self.app.summary_values), 1)
+        self.app.apply_result(sample_result())
+        self.root.update()
+        self.assertEqual(self.app.width, full_width)
+        self.assertEqual(self.root.winfo_width(), full_width)
+        self.assertEqual([value[0] for value in self.app.summary_values], ["5h", "Weekly"])
+
+    def test_summary_keeps_present_window_with_missing_values_or_zero_remaining(self):
+        data = usage_payload()
+        data["rate_limit"]["secondary_window"] = None
+        window = data["rate_limit"]["primary_window"]
+        window.pop("used_percent")
+        window.pop("reset_at", None)
+        self.app.apply_result(PollResult(Outcome(parse_usage(data)), Outcome(), datetime.now(timezone.utc)))
+        self.assertEqual(self.app.summary_values, [("5h", "—", "—")])
+        window["used_percent"] = 100
+        self.app.apply_result(PollResult(Outcome(parse_usage(data)), Outcome(), datetime.now(timezone.utc)))
+        self.assertEqual(self.app.summary_values, [("5h", "0%", "—")])
 
     def test_settings_validate_save_theme_proxy_and_cancel(self):
         self.app.open_settings()

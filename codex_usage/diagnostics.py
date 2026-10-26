@@ -3,6 +3,7 @@ import json
 import importlib.util
 import sys
 import tkinter as tk
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -74,6 +75,18 @@ def run_smoke_test(directory):
         checks["details_hidden_on_start"] = not app.details_visible
         checks["tray_ready"] = app.tray_ready
         capture("collapsed.png")
+        full_width = app.width
+        weekly = replace(result.usage.value, windows=tuple(
+            w for w in result.usage.value.windows if w.seconds == 604800))
+        app.apply_result(replace(result, usage=Outcome(weekly)))
+        root.update()
+        checks["weekly_only_compact"] = (app.width < full_width and
+                                         [v[0] for v in app.summary_values] == ["Weekly"] and
+                                         root.winfo_width() == app.width)
+        capture("weekly-only.png")
+        app.apply_result(result)
+        root.update()
+        checks["dual_window_restored"] = app.width == full_width and root.winfo_width() == full_width
         app._hover_enter()
         root.after(220, hovered)
 
@@ -126,7 +139,8 @@ def run_smoke_test(directory):
     checks["exited"] = app.closed
     passed = all(checks.get(k) for k in ("collapsed_on_start", "details_hidden_on_start", "hover_details", "socks_available",
                                        "capsule_stays_compact", "preferences_saved", "autostart_saved_simulated", "tray_ready", "expanded",
-                                       "hidden", "restored", "pin_toggled", "exited")) and not errors
+                                       "hidden", "restored", "pin_toggled", "exited",
+                                       "weekly_only_compact", "dual_window_restored")) and not errors
     checks["passed"] = passed
     (output / "checks.json").write_text(json.dumps(checks, indent=2), encoding="utf-8")
     return 0 if passed else 1

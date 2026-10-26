@@ -89,6 +89,7 @@ class MonitorApp:
                                    for label in ("5h", "Weekly"))
         self.width, self.height = self.px(WIDTH), self.px(HEIGHT)
         self.width = max(self.width, sum(self._group_widths) + self.px(32))
+        self._full_width = self.width
         self.panel_width = self.px(PANEL_WIDTH)
         self.settings_path = settings_path or default_settings_path()
         self.settings = Settings.load(self.settings_path)
@@ -204,6 +205,16 @@ class MonitorApp:
         return tuple(next((w for w in ordinary if w.seconds == seconds), None) for seconds in (18000, 604800))
 
     def _render_summary(self):
+        groups = [(name, window, width) for name, window, width in
+                  zip(("5h", "Weekly"), self._summary_windows(), self._group_widths)
+                  if self.usage is None or window is not None]
+        width = (self._full_width if len(groups) == 2 else
+                 groups[0][2] + self.px(20) if groups else
+                 self.summary_font.measure("用量未提供") + self.px(24))
+        if width != self.width:
+            self.width = width
+            self.summary.configure(width=width)
+            self._layout()
         c = self.summary
         c.delete("all")
         # True circular end caps, joined by straight top and bottom edges.
@@ -219,10 +230,14 @@ class MonitorApp:
         for y in (y1, y2):
             c.create_line(x1 + radius, y, x2 - radius, y, fill=BORDER)
         starts = (self.px(10), self.width - self.px(10) - self._group_widths[1])
-        middle = (starts[0] + self._group_widths[0] + starts[1]) / 2
-        c.create_line(middle, self.px(6), middle, self.height - self.px(6), fill=BORDER)
+        if len(groups) == 2:
+            middle = (starts[0] + self._group_widths[0] + starts[1]) / 2
+            c.create_line(middle, self.px(6), middle, self.height - self.px(6), fill=BORDER)
         self.summary_values = []
-        for index, (name, window) in enumerate(zip(("5h", "Weekly"), self._summary_windows())):
+        if not groups:
+            c.create_text(self.width / 2, self.height / 2, text="用量未提供",
+                          fill=MUTED, font=self.summary_font)
+        for index, (name, window, _) in enumerate(groups):
             x = starts[index]
             y = round(self.height / 2)
             c.create_text(x, y, text=name, anchor="w", fill=SUMMARY_TEXT, font=self.summary_font)
